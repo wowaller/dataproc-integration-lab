@@ -17,8 +17,8 @@ ICEBERG_VERSION="1.6.1"
 DELTA_VERSION="3.2.1"
 
 # Download URLs (only Hadoop, Hive, and GCS Connector are standard)
-HADOOP_URL="https://archive.apache.org/dist/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
-HIVE_URL="https://archive.apache.org/dist/hive/hive-${HIVE_VERSION}/apache-hive-${HIVE_VERSION}-bin.tar.gz"
+HADOOP_URL="https://dlcdn.apache.org/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+HIVE_URL="https://mirrors.huaweicloud.com/apache/hive/hive-${HIVE_VERSION}/apache-hive-${HIVE_VERSION}-bin.tar.gz"
 GCS_CONNECTOR_URL="https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/${GCS_CONNECTOR_VERSION}/gcs-connector-${GCS_CONNECTOR_VERSION}-shaded.jar"
 ICEBERG_URL="https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/${ICEBERG_VERSION}/iceberg-spark-runtime-3.5_2.12-${ICEBERG_VERSION}.jar"
 
@@ -122,6 +122,24 @@ if ! gsutil ls "gs://$BUCKET_NAME/hive-aux/delta-hive-assembly-3.2.1_2.12_3.5.3.
   fi
 else
   echo "Delta Hive Assembly is already staged in GCS."
+fi
+
+# 3d. Stage the Cluster Configurations if not already in GCS
+echo "Checking for staged Dataproc configurations in GCS..."
+if ! gsutil ls "gs://$BUCKET_NAME/configs/dataproc-configs.tar.gz" >/dev/null 2>&1; then
+  echo "Dataproc configurations not found in GCS. Attempting to copy from active cluster..."
+  if gcloud compute instances describe "${CLUSTER_NAME}-m-0" --zone="$CLUSTER_ZONE" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud compute ssh "${CLUSTER_NAME}-m-0" \
+      --project="$PROJECT_ID" \
+      --zone="$CLUSTER_ZONE" \
+      --tunnel-through-iap \
+      --command="sudo tar -chzf /tmp/dataproc-configs.tar.gz -C / etc/hadoop/conf etc/spark/conf etc/hive/conf && gsutil cp /tmp/dataproc-configs.tar.gz gs://${BUCKET_NAME}/configs/dataproc-configs.tar.gz && sudo rm -f /tmp/dataproc-configs.tar.gz"
+    echo "Dataproc configurations successfully copied to GCS."
+  else
+    echo "WARNING: Cluster '${CLUSTER_NAME}' is not running. Could not copy Dataproc configurations. If this is a fresh setup, please ensure the cluster is running and re-run this script."
+  fi
+else
+  echo "Dataproc configurations are already staged in GCS."
 fi
 
 # 4. Upload standard packages to GCS (only if any were downloaded)

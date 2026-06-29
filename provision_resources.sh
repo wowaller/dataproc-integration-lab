@@ -9,7 +9,7 @@ PROJECT_ID=$(gcloud config get-value project)
 REGION="us-central1"
 NETWORK_NAME="local-lab"
 SUBNET_NAME="local-lab-us"
-VM_NAME="dataproc-client-vm"
+VM_NAME=${VM_NAME:-"dataproc-client-vm"}
 BUCKET_NAME="dataproc-client-lab-${PROJECT_ID}"
 
 echo "===================================================="

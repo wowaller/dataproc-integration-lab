@@ -5,7 +5,7 @@
 set -euo pipefail
 
 PROJECT_ID=$(gcloud config get-value project)
-VM_NAME="dataproc-client-vm"
+VM_NAME=${VM_NAME:-"dataproc-client-vm"}
 BUCKET_NAME="dataproc-client-lab-${PROJECT_ID}"
 
 echo "===================================================="

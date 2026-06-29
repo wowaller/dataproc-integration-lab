@@ -123,18 +123,10 @@ gcloud compute instances add-metadata <您的VM名称> \
   --metadata="dataproc-cluster-name=<您的集群名称>,dataproc-cluster-uuid=${CLUSTER_UUID},dataproc-role=Master,dataproc-region=<您的集群区域>"
 ```
 
-#### 2. 在 GCS 中准备并暂存包
-在工作站运行准备脚本，将 Spark 二进制文件和 Hive 依赖包上传到您的 GCS 暂存桶中：
+#### 2. 在 GCS 中准备并暂存包与配置
+确保您已运行准备脚本。该脚本会自动下载标准依赖、从 Master 节点打包 Spark，并打包集群配置文件，全部自动上传至您的 GCS 暂存桶中：
 ```bash
-# 该脚本会自动从您的 Master 节点打包 Spark，并从 Maven 下载标准 jar 包上传至 GCS
 bash prepare_packages.sh
-```
-
-同时，手动打包并上传集群的配置文件（在 Dataproc Master 节点上运行）：
-```bash
-# 在 Dataproc Master 节点上运行：
-sudo tar -chzf /tmp/dataproc-configs.tar.gz -C / etc/hadoop/conf etc/spark/conf etc/hive/conf
-gsutil cp /tmp/dataproc-configs.tar.gz gs://dataproc-client-lab-<您的项目ID>/configs/
 ```
 
 #### 3. 在 VM 上执行安装

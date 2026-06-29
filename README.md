@@ -124,18 +124,10 @@ gcloud compute instances add-metadata <VM_NAME> \
   --metadata="dataproc-cluster-name=<CLUSTER_NAME>,dataproc-cluster-uuid=${CLUSTER_UUID},dataproc-role=Master,dataproc-region=<REGION>"
 ```
 
-#### 2. Package Configurations and stage packages
-Make sure you have run the staging script to upload the Dataproc Spark binaries and Hive auxiliary jars to your GCS bucket:
+#### 2. Package Configurations and Stage Packages
+Make sure you have run the staging script. This will download standard jars, package Spark from your master node, and package the cluster configurations, uploading all of them to your GCS bucket:
 ```bash
-# This packages Spark from your master node and uploads standard jars to GCS
 bash prepare_packages.sh
-```
-
-Also package and upload the cluster configurations:
-```bash
-# Run this on your Dataproc master node
-sudo tar -chzf /tmp/dataproc-configs.tar.gz -C / etc/hadoop/conf etc/spark/conf etc/hive/conf
-gsutil cp /tmp/dataproc-configs.tar.gz gs://dataproc-client-lab-<PROJECT_ID>/configs/
 ```
 
 #### 3. Run the Setup on the VM
