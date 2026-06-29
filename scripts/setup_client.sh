@@ -6,14 +6,20 @@
 
 set -euo pipefail
 
-if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <bucket-name>"
+# 1. Parse Arguments
+BUCKET_NAME=$1
+CLUSTER_NAME=$2
+MASTER_HOST=$3
+PROJECT_ID=$4
+REGION=${5:-"us-central1"}
+
+if [ -z "$BUCKET_NAME" ] || [ -z "$CLUSTER_NAME" ] || [ -z "$MASTER_HOST" ] || [ -z "$PROJECT_ID" ]; then
+    echo "Usage: $0 <bucket_name> <cluster_name> <master_host> <project_id> [region]"
     exit 1
 fi
 
-BUCKET_NAME="$1"
-
 HADOOP_VERSION="3.3.6"
+SPARK_VERSION="3.5.3"
 HIVE_VERSION="3.1.3"
 GCS_CONNECTOR_VERSION="3.1.13"
 ICEBERG_VERSION="1.6.1"
@@ -76,6 +82,8 @@ sudo cp "/tmp/iceberg-spark-runtime-3.5_2.12-${ICEBERG_VERSION}.jar" /opt/spark/
 echo "Deploying Hive Auxiliary Jars to /usr/lib..."
 sudo cp "/tmp/delta-spark-3.2.1_2.12_3.5.3-with-dependencies.jar" /usr/lib/delta/lib/
 sudo cp "/tmp/delta-storage-3.2.1_2.12_3.5.3.jar" /usr/lib/delta/lib/
+sudo cp "/tmp/delta-spark-3.2.1_2.12_3.5.3-with-dependencies.jar" /opt/spark/jars/
+sudo cp "/tmp/delta-storage-3.2.1_2.12_3.5.3.jar" /opt/spark/jars/
 sudo cp "/tmp/delta-hive-assembly-3.2.1_2.12_3.5.3.jar" /usr/lib/delta/lib/
 sudo cp "/tmp/iceberg-hive-runtime.jar" /usr/lib/iceberg/lib/
 sudo cp "/tmp/libfb303-0.9.3.jar" /usr/lib/iceberg/lib/
@@ -88,7 +96,7 @@ sudo tar -xzf /tmp/dataproc-configs.tar.gz -C /
 
 # 7. Setup Environment Variables
 echo "Setting up environment variables in /etc/profile.d/dataproc-env.sh..."
-sudo tee /etc/profile.d/dataproc-env.sh > /dev/null << 'EOF'
+sudo tee /etc/profile.d/dataproc-env.sh > /dev/null << EOF
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export HADOOP_HOME=/opt/hadoop
 export SPARK_HOME=/opt/spark
@@ -96,7 +104,14 @@ export HIVE_HOME=/opt/hive
 export HADOOP_CONF_DIR=/etc/hadoop/conf
 export SPARK_CONF_DIR=/etc/spark/conf
 export HIVE_CONF_DIR=/etc/hive/conf
-export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$SPARK_HOME/bin:$HIVE_HOME/bin
+export PATH=\$PATH:\$HADOOP_HOME/bin:\$HADOOP_HOME/sbin:\$SPARK_HOME/bin:\$HIVE_HOME/bin
+
+# Dataproc Lab Integration Variables
+export DATAPROC_BUCKET="${BUCKET_NAME}"
+export DATAPROC_CLUSTER_NAME="${CLUSTER_NAME}"
+export DATAPROC_MASTER_HOST="${MASTER_HOST}"
+export DATAPROC_PROJECT_ID="${PROJECT_ID}"
+export DATAPROC_REGION="${REGION}"
 EOF
 sudo chmod +x /etc/profile.d/dataproc-env.sh
 
@@ -127,7 +142,166 @@ if ls /opt/hive/lib/log4j-slf4j-impl-*.jar >/dev/null 2>&1; then
   sudo mv /opt/hive/lib/log4j-slf4j-impl-*.jar /opt/hive/lib/log4j-slf4j-impl-*.jar.bak || true
 fi
 
-# 11. Cleanup temporary downloads on VM
+# 11. Install Spark Connect Client Dependencies
+echo "Installing Spark Connect Python client dependencies..."
+sudo apt-get install -y python3-pip
+pip3 install pandas pyarrow grpcio grpcio-status --break-system-packages
+
+# 12. Create Spark Connect Helper Scripts in the home directory
+echo "Creating Spark Connect helper scripts in home directory..."
+USER_HOME=$(eval echo "~${SUDO_USER:-$USER}")
+
+cat << 'EOF' > "${USER_HOME}/start_spark_connect.sh"
+#!/bin/bash
+# Helper script to start Spark Connect Server on the Dataproc master node
+
+source /etc/profile.d/dataproc-env.sh
+
+if [ -z "$DATAPROC_CLUSTER_NAME" ] || [ -z "$DATAPROC_MASTER_HOST" ]; then
+  echo "ERROR: Dataproc environment variables are not set. Run: source /etc/profile.d/dataproc-env.sh"
+  exit 1
+fi
+
+MASTER_NODE="${DATAPROC_CLUSTER_NAME}-m-0"
+MASTER_ZONE=$(gcloud compute instances list --filter="name=${MASTER_NODE}" --format="value(zone)" --limit=1)
+
+if [ -z "$MASTER_ZONE" ]; then
+  echo "ERROR: Could not resolve zone for master node ${MASTER_NODE} via gcloud."
+  exit 1
+fi
+
+echo "Starting Spark Connect Server on Dataproc Master (${MASTER_NODE} in ${MASTER_ZONE}) on YARN..."
+gcloud compute ssh "${MASTER_NODE}" \
+  --zone="${MASTER_ZONE}" \
+  --tunnel-through-iap \
+  --command="/usr/lib/spark/sbin/start-connect-server.sh --master yarn --deploy-mode client --packages org.apache.spark:spark-connect_2.12:3.5.3"
+
+echo "Waiting for Spark Connect Server to start listening on port 15002..."
+TIMEOUT=60
+ELAPSED=0
+while ! timeout 1 bash -c "cat < /dev/null > /dev/tcp/${DATAPROC_MASTER_HOST}/15002" >/dev/null 2>&1; do
+  sleep 2
+  ELAPSED=$((ELAPSED + 2))
+  if [ $ELAPSED -ge $TIMEOUT ]; then
+    echo "ERROR: Spark Connect Server failed to start within ${TIMEOUT} seconds."
+    echo "Please check YARN logs on the master node."
+    exit 1
+  fi
+done
+
+echo "===================================================="
+echo "Spark Connect Server successfully started and verified!"
+echo "You can now connect your PySpark session using:"
+echo "  spark = SparkSession.builder.remote(\"sc://${DATAPROC_MASTER_HOST}:15002\").getOrCreate()"
+echo "===================================================="
+EOF
+chmod +x "${USER_HOME}/start_spark_connect.sh"
+chown "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "${USER_HOME}/start_spark_connect.sh"
+
+cat << 'EOF' > "${USER_HOME}/stop_spark_connect.sh"
+#!/bin/bash
+# Helper script to stop Spark Connect Server on the Dataproc master node
+
+source /etc/profile.d/dataproc-env.sh
+
+if [ -z "$DATAPROC_CLUSTER_NAME" ]; then
+  echo "ERROR: Dataproc environment variables are not set. Run: source /etc/profile.d/dataproc-env.sh"
+  exit 1
+fi
+
+MASTER_NODE="${DATAPROC_CLUSTER_NAME}-m-0"
+MASTER_ZONE=$(gcloud compute instances list --filter="name=${MASTER_NODE}" --format="value(zone)" --limit=1)
+
+echo "Stopping Spark Connect Server on Dataproc Master..."
+gcloud compute ssh "${MASTER_NODE}" \
+  --zone="${MASTER_ZONE}" \
+  --tunnel-through-iap \
+  --command="/usr/lib/spark/sbin/stop-connect-server.sh"
+echo "Spark Connect Server stopped."
+EOF
+chmod +x "${USER_HOME}/stop_spark_connect.sh"
+chown "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "${USER_HOME}/stop_spark_connect.sh"
+
+cat << 'EOF' > "${USER_HOME}/check_spark_connect.sh"
+#!/bin/bash
+# Standalone Health Check for Spark Connect Server
+
+source /etc/profile.d/dataproc-env.sh
+
+if [ -z "$DATAPROC_MASTER_HOST" ] || [ -z "$DATAPROC_CLUSTER_NAME" ]; then
+  echo "ERROR: Dataproc environment variables are not set. Run: source /etc/profile.d/dataproc-env.sh"
+  exit 1
+fi
+
+CONNECTION_URI="sc://${DATAPROC_MASTER_HOST}:15002"
+
+echo "===================================================="
+echo "DATAPROC SPARK CONNECT HEALTH CHECK"
+echo "Target Server: ${CONNECTION_URI}"
+echo "===================================================="
+
+# Tier 1: Network Port Check
+echo -n "Checking network port 15002... "
+if timeout 2 bash -c "cat < /dev/null > /dev/tcp/${DATAPROC_MASTER_HOST}/15002" >/dev/null 2>&1; then
+  echo "PORT OPEN (OK)"
+else
+  echo "CONNECTION REFUSED (FAIL)"
+  echo "----------------------------------------------------"
+  echo "CRITICAL: Spark Connect Server is not listening on port 15002."
+  echo "Please start the server first by running: ./start_spark_connect.sh"
+  echo "===================================================="
+  exit 1
+fi
+
+# Tier 2: End-to-End Query Execution Check
+echo -n "Executing end-to-end test query... "
+TEST_RESULT=$(python3 -c "
+import sys
+import glob
+
+# Add Spark python libraries to path
+sys.path.insert(0, '/opt/spark/python')
+py4j_zip = glob.glob('/opt/spark/python/lib/py4j-*-src.zip')
+if py4j_zip:
+    sys.path.insert(0, py4j_zip[0])
+
+from pyspark.sql import SparkSession
+
+try:
+    spark = SparkSession.builder.remote('${CONNECTION_URI}').getOrCreate()
+    # Run a simple query
+    res = spark.sql('SELECT 1 as val').collect()
+    if len(res) > 0 and res[0]['val'] == 1:
+        print('OK')
+        sys.exit(0)
+    else:
+        print('INVALID_RESULT')
+        sys.exit(2)
+except Exception as e:
+    print('EXCEPTION:', str(e).replace('\n', ' '))
+    sys.exit(3)
+" 2>&1)
+
+if [ "$TEST_RESULT" = "OK" ]; then
+  echo "QUERY SUCCESSFUL (OK)"
+  echo "----------------------------------------------------"
+  echo "SUCCESS: Spark Connect Server is healthy and ready!"
+  echo "===================================================="
+  exit 0
+else
+  echo "QUERY FAILED (FAIL)"
+  echo "----------------------------------------------------"
+  echo "ERROR: Spark Connect Server is listening, but failing to execute queries."
+  echo "Details: ${TEST_RESULT}"
+  echo "Please check the YARN ResourceManager UI or run 'yarn logs' for details."
+  echo "===================================================="
+  exit 2
+fi
+EOF
+chmod +x "${USER_HOME}/check_spark_connect.sh"
+chown "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "${USER_HOME}/check_spark_connect.sh"
+
+# 13. Cleanup temporary downloads on VM
 echo "Cleaning up temporary files..."
 sudo rm -f /tmp/hadoop-*.tar.gz /tmp/dataproc-spark.tar.gz /tmp/apache-hive-*.tar.gz /tmp/gcs-connector-*.jar /tmp/iceberg-*.jar /tmp/delta-*.jar /tmp/libfb303-*.jar /tmp/dataproc-configs.tar.gz
 

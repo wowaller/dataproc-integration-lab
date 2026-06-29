@@ -4,13 +4,16 @@
 
 set -euo pipefail
 
-# Configuration
-PROJECT_ID=$(gcloud config get-value project)
-REGION="us-central1"
+# Load central configuration
+if [ -f config.env ]; then
+  source config.env
+else
+  echo "ERROR: config.env not found. Please run this script from the project root."
+  exit 1
+fi
+
 NETWORK_NAME="local-lab"
 SUBNET_NAME="local-lab-us"
-VM_NAME=${VM_NAME:-"dataproc-client-vm"}
-BUCKET_NAME="dataproc-client-lab-${PROJECT_ID}"
 
 echo "===================================================="
 echo "Starting Provisioning of Dataproc Integration VM"
@@ -18,6 +21,7 @@ echo "Project:      $PROJECT_ID"
 echo "Region:       $REGION"
 echo "VPC Subnet:   $SUBNET_NAME"
 echo "VM Type:      n4-standard-4"
+echo "Target Cluster: $CLUSTER_NAME"
 echo "===================================================="
 
 # 1. Enable APIs
@@ -37,13 +41,20 @@ else
 fi
 
 # Check if the VM already exists and get its zone
+VM_ZONE=${VM_ZONE:-""}
 EXISTING_ZONE=$(gcloud compute instances list --filter="name=${VM_NAME}" --format="value(zone)")
 
 if [ -z "$EXISTING_ZONE" ]; then
   echo "Creating Standalone Client VM: $VM_NAME (n4-standard-4, Debian 12)..."
+  # Resolve zone argument if specified
+  ZONE_ARG=""
+  if [ -n "$VM_ZONE" ]; then
+    ZONE_ARG="--zone=$VM_ZONE"
+  fi
   gcloud compute instances create "$VM_NAME" \
     --project="$PROJECT_ID" \
     --subnet="$SUBNET_NAME" \
+    $ZONE_ARG \
     --machine-type=n4-standard-4 \
     --image-project=debian-cloud \
     --image-family=debian-12 \
@@ -57,6 +68,10 @@ else
   echo "Standalone Client VM $VM_NAME already exists in zone: $EXISTING_ZONE."
   VM_ZONE="$EXISTING_ZONE"
 fi
+
+# Apply the Dataproc authorization metadata using the new standalone script
+chmod +x authorize_client_vm.sh
+VM_NAME="$VM_NAME" CLUSTER_NAME="$CLUSTER_NAME" REGION="$REGION" ./authorize_client_vm.sh
 
 # Write the zone to a temp file for run_lab.sh
 echo "$VM_ZONE" > /tmp/dataproc_client_vm_zone.txt

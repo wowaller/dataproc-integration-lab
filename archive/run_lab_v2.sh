@@ -10,7 +10,7 @@ PROJECT_ID=$(gcloud config get-value project)
 export VM_NAME="dataproc-client-vm-v2" # Exported so provision_resources.sh uses it
 BUCKET_NAME="dataproc-client-lab-${PROJECT_ID}"
 
-CLUSTER_NAME="jmsau-test"
+export CLUSTER_NAME="jmsau-test"
 CLUSTER_ZONE="us-central1-b"
 
 echo "===================================================="
@@ -50,11 +50,12 @@ gcloud compute ssh "$VM_NAME" \
 
 # 5. Execute verification tests on the Client VM
 echo "Step 5: Running integration verification tests on Client VM..."
+MASTER_FQDN="${CLUSTER_NAME}-m-0.${CLUSTER_ZONE}.c.${PROJECT_ID}.internal"
 gcloud compute ssh "$VM_NAME" \
   --project="$PROJECT_ID" \
   --zone="$VM_ZONE" \
   --tunnel-through-iap \
-  --command="chmod +x /tmp/verify_client.sh && /tmp/verify_client.sh ${BUCKET_NAME}"
+  --command="chmod +x /tmp/verify_client.sh && /tmp/verify_client.sh ${MASTER_FQDN}"
 
 echo "===================================================="
 echo "🎉 LAB ORCHESTRATION V2 COMPLETED SUCCESSFULLY!"

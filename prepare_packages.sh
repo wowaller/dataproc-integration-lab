@@ -5,9 +5,13 @@
 
 set -euo pipefail
 
-# Configuration
-PROJECT_ID=$(gcloud config get-value project)
-BUCKET_NAME="dataproc-client-lab-${PROJECT_ID}"
+# Load central configuration
+if [ -f config.env ]; then
+  source config.env
+else
+  echo "ERROR: config.env not found. Please run this script from the project root."
+  exit 1
+fi
 
 # Component Versions (matched to Dataproc cluster-9c32)
 HADOOP_VERSION="3.3.6"
@@ -67,6 +71,7 @@ if ! gsutil ls -b "gs://$BUCKET_NAME" >/dev/null 2>&1; then
   gsutil mb -p "$PROJECT_ID" -c standard -l "us-central1" "gs://$BUCKET_NAME"
 fi
 
+# 3. Stage the Custom Dataproc Spark Package from cluster if not already in GCS
 # 3. Stage the Custom Dataproc Spark Package from cluster if not already in GCS
 CLUSTER_NAME="jmsau-test"
 CLUSTER_ZONE="us-central1-b"

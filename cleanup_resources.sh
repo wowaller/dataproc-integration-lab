@@ -4,9 +4,13 @@
 
 set -euo pipefail
 
-PROJECT_ID=$(gcloud config get-value project)
-VM_NAME=${VM_NAME:-"dataproc-client-vm"}
-BUCKET_NAME="dataproc-client-lab-${PROJECT_ID}"
+# Load central configuration
+if [ -f config.env ]; then
+  source config.env
+else
+  echo "ERROR: config.env not found. Please run this script from the project root."
+  exit 1
+fi
 
 echo "===================================================="
 echo "Starting Safe Cleanup of Dataproc Client VM Lab"

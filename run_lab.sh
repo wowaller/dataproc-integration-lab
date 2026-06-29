@@ -5,12 +5,13 @@
 
 set -euo pipefail
 
-PROJECT_ID=$(gcloud config get-value project)
-REGION="us-central1"
-CLUSTER_ZONE="us-central1-b"
-CLUSTER_NAME="jmsau-test"  # Use new test cluster
-VM_NAME="dataproc-client-vm"
-BUCKET_NAME="dataproc-client-lab-${PROJECT_ID}"
+# Load central configuration
+if [ -f config.env ]; then
+  source config.env
+else
+  echo "ERROR: config.env not found. Please run this script from the project root."
+  exit 1
+fi
 
 echo "===================================================="
 echo "🚀 STARTING DATAPROC INTEGRATION LAB ORCHESTRATION"
@@ -37,15 +38,16 @@ gcloud compute scp \
   --project="$PROJECT_ID" \
   --zone="$VM_ZONE" \
   --tunnel-through-iap \
-  scripts/setup_client.sh scripts/verify_client.sh "${VM_NAME}:/tmp/"
+  scripts/setup_client.sh scripts/verify_integration.sh "${VM_NAME}:/tmp/"
 
 # 4. Execute setup script on the Client VM
 echo "Step 4: Running setup script on Client VM (unpacking payload & applying configs)..."
+MASTER_FQDN="${CLUSTER_NAME}-m-0.${CLUSTER_ZONE}.c.${PROJECT_ID}.internal"
 gcloud compute ssh "$VM_NAME" \
   --project="$PROJECT_ID" \
   --zone="$VM_ZONE" \
   --tunnel-through-iap \
-  --command="chmod +x /tmp/setup_client.sh /tmp/verify_client.sh && /tmp/setup_client.sh ${BUCKET_NAME}"
+  --command="chmod +x /tmp/setup_client.sh /tmp/verify_integration.sh && /tmp/setup_client.sh ${BUCKET_NAME} ${CLUSTER_NAME} ${MASTER_FQDN} ${PROJECT_ID} ${CLUSTER_ZONE}"
 
 # 5. Execute verification tests on the Client VM
 echo "Step 5: Running integration verification tests on Client VM..."
@@ -53,7 +55,7 @@ gcloud compute ssh "$VM_NAME" \
   --project="$PROJECT_ID" \
   --zone="$VM_ZONE" \
   --tunnel-through-iap \
-  --command="/tmp/verify_client.sh"
+  --command="chmod +x /tmp/verify_integration.sh && /tmp/verify_integration.sh"
 
 echo "===================================================="
 echo "🎉 LAB ORCHESTRATION COMPLETED SUCCESSFULLY!"

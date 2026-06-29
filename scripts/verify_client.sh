@@ -18,7 +18,7 @@ sudo pkill -f java || true
 
 PROJECT_ID=$(gcloud config get-value project)
 BUCKET_NAME="dataproc-client-lab-${PROJECT_ID}"
-MASTER_HOST="jmsau-test-m-0"
+MASTER_HOST="${1:-"jmsau-test-m-0"}"
 
 echo "===================================================="
 echo "Starting Dataproc Integration Verification Tests"
