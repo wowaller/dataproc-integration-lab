@@ -21,11 +21,11 @@
 
 ```mermaid
 graph TD
-    subgraph Client VM (Standard VM)
+    subgraph Client VM ["Client VM (Standard VM)"]
         A[PySpark Connect 客户端] -- gRPC 端口 15002 --> B[Spark Connect 服务器]
         C[spark-submit --deploy-mode cluster] -- 提交 --> D[YARN 资源管理器]
     end
-    subgraph Dataproc Cluster (Licensed)
+    subgraph Dataproc Cluster ["Dataproc Cluster (Licensed)"]
         B -- 运行 Driver --> E[YARN ApplicationMaster]
         D -- 分配 --> E
         E -- 协调 --> F[Spark 执行器]
