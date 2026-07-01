@@ -7,9 +7,10 @@ set -euo pipefail
 PROJECT_ID="jms-au-495809"
 CLUSTER_NAME="jmsau"
 REGION="australia-southeast2"
-ZONE="australia-southeast2-a"
+ZONE="australia-southeast2-b"
 SUBNET="jmsau-subnet-bgd-pro"
 STAGING_BUCKET="dataproc-stagingdir-au"
+TEMP_BUCKET="dataproc-tmpdir-au"
 WAREHOUSE_BUCKET="bigdata-pro"
 DEFAULT_FS_BUCKET="bigdata-pro"
 
@@ -18,6 +19,9 @@ DB_IP="10.79.109.28"
 DB_USER="hive"
 DB_PASS="Shyf_2020"
 DB_NAME="hive" # Change this if the target database name is different (e.g. metastore)
+
+# JDBC Connection URL. Note: 'lower_case_table_names' is a MySQL server-side setting (in my.cnf) and cannot be set via JDBC URL.
+CONNECTION_URL="jdbc:mysql://${DB_IP}/${DB_NAME}?createDatabaseIfNotExist=true"
 
 echo "===================================================="
 echo "Creating Dataproc cluster: ${CLUSTER_NAME}"
@@ -37,7 +41,7 @@ gcloud dataproc clusters create "${CLUSTER_NAME}" \
     --subnet="${SUBNET}" \
     --no-address \
     --bucket="${STAGING_BUCKET}" \
-    --temp-bucket="${STAGING_BUCKET}" \
+    --temp-bucket="${TEMP_BUCKET}" \
     --enable-component-gateway \
     --num-masters 3 \
     --master-machine-type n4-standard-16 \
@@ -53,12 +57,10 @@ gcloud dataproc clusters create "${CLUSTER_NAME}" \
     --tags bigdata \
     --properties "spark:spark.dataproc.engine=lightningEngine,\
 spark:spark.dataproc.lightningEngine.runtime=default,\
-hive:javax.jdo.option.ConnectionURL=jdbc:mysql://${DB_IP}/${DB_NAME}?createDatabaseIfNotExist=true,\
+hive:javax.jdo.option.ConnectionURL=${CONNECTION_URL},\
 hive:javax.jdo.option.ConnectionDriverName=com.mysql.cj.jdbc.Driver,\
 hive:javax.jdo.option.ConnectionUserName=${DB_USER},\
 hive:javax.jdo.option.ConnectionPassword=${DB_PASS},\
-hive:hive.metastore.schema.verification=false,\
-hive:datanucleus.schema.autoCreateAll=true,\
 hive:hive.metastore.warehouse.dir=gs://${WAREHOUSE_BUCKET}/user/hive/warehouse,\
 core:fs.defaultFS=gs://${DEFAULT_FS_BUCKET}"
 

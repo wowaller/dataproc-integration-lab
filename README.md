@@ -21,11 +21,11 @@ To bypass this without managing complex GCE licenses, this lab implements a **Hy
 
 ```mermaid
 graph TD
-    subgraph Client VM (Standard VM)
+    subgraph Client VM ["Client VM (Standard VM)"]
         A[PySpark Connect Client] -- gRPC Port 15002 --> B[Spark Connect Server]
         C[spark-submit --deploy-mode cluster] -- Submit --> D[YARN ResourceManager]
     end
-    subgraph Dataproc Cluster (Licensed)
+    subgraph Dataproc Cluster ["Dataproc Cluster (Licensed)"]
         B -- Runs Driver --> E[YARN ApplicationMaster]
         D -- Allocates --> E
         E -- Coordinates --> F[Spark Executors]

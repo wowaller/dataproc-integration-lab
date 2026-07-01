@@ -9,14 +9,17 @@ set -euo pipefail
 # 1. Parse Arguments
 BUCKET_NAME=$1
 CLUSTER_NAME=$2
-MASTER_HOST=$3
+CLUSTER_ZONE=$3
 PROJECT_ID=$4
 REGION=${5:-"us-central1"}
 
-if [ -z "$BUCKET_NAME" ] || [ -z "$CLUSTER_NAME" ] || [ -z "$MASTER_HOST" ] || [ -z "$PROJECT_ID" ]; then
-    echo "Usage: $0 <bucket_name> <cluster_name> <master_host> <project_id> [region]"
+if [ -z "$BUCKET_NAME" ] || [ -z "$CLUSTER_NAME" ] || [ -z "$CLUSTER_ZONE" ] || [ -z "$PROJECT_ID" ]; then
+    echo "Usage: $0 <bucket_name> <cluster_name> <cluster_zone> <project_id> [region]"
     exit 1
 fi
+
+# Construct Master FQDN
+MASTER_HOST="${CLUSTER_NAME}-m-0.${CLUSTER_ZONE}.c.${PROJECT_ID}.internal"
 
 HADOOP_VERSION="3.3.6"
 SPARK_VERSION="3.5.3"

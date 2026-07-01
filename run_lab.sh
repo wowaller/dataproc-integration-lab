@@ -42,12 +42,11 @@ gcloud compute scp \
 
 # 4. Execute setup script on the Client VM
 echo "Step 4: Running setup script on Client VM (unpacking payload & applying configs)..."
-MASTER_FQDN="${CLUSTER_NAME}-m-0.${CLUSTER_ZONE}.c.${PROJECT_ID}.internal"
 gcloud compute ssh "$VM_NAME" \
   --project="$PROJECT_ID" \
   --zone="$VM_ZONE" \
   --tunnel-through-iap \
-  --command="chmod +x /tmp/setup_client.sh /tmp/verify_integration.sh && /tmp/setup_client.sh ${BUCKET_NAME} ${CLUSTER_NAME} ${MASTER_FQDN} ${PROJECT_ID} ${CLUSTER_ZONE}"
+  --command="chmod +x /tmp/setup_client.sh /tmp/verify_integration.sh && /tmp/setup_client.sh ${BUCKET_NAME} ${CLUSTER_NAME} ${CLUSTER_ZONE} ${PROJECT_ID} ${REGION}"
 
 # 5. Execute verification tests on the Client VM
 echo "Step 5: Running integration verification tests on Client VM..."

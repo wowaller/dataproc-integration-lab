@@ -66,7 +66,13 @@ hive:javax.jdo.option.ConnectionDriverName=com.mysql.cj.jdbc.Driver,\
 hive:javax.jdo.option.ConnectionUserName=${DB_USER},\
 hive:javax.jdo.option.ConnectionPassword=${DB_PASS},\
 hive:hive.metastore.schema.verification=false,\
-hive:datanucleus.schema.autoCreateAll=true"
+hive:datanucleus.schema.autoCreateAll=true,\
+spark:spark.sql.catalog.bigquery=com.google.cloud.spark.bigquery.v2.BigQueryCatalog,\
+spark:spark.sql.catalog.iceberg_biglake=org.apache.iceberg.spark.SparkCatalog,\
+spark:spark.sql.catalog.iceberg_biglake.catalog-impl=org.apache.iceberg.gcp.biglake.BigLakeCatalog,\
+spark:spark.sql.catalog.iceberg_biglake.gcp_project=${PROJECT_ID},\
+spark:spark.sql.catalog.iceberg_biglake.gcp_location=${REGION},\
+spark:spark.sql.catalog.iceberg_biglake.warehouse=gs://${BUCKET}/iceberg-warehouse"
 
 echo "===================================================="
 echo "Test Cluster '${CLUSTER_NAME}' creation command submitted."
